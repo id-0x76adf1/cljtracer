@@ -5,7 +5,8 @@
             [cljtracer.ray :as ray]
             [cljtracer.util :as util]
             [cljtracer.vec3 :as vec3])
-  (:require [clojure.math.numeric-tower :as math]))
+  (:require [clojure.math.numeric-tower :as math])
+  (:require [clojure.tools.cli :as cli]))
 
 (defn color
   [ray world depth]
@@ -75,27 +76,41 @@
         r (camera/ray camera u v)]
     (color r scene 0)))
 
+(def cli-options
+  [["-w" "--width WIDTH" "Image width"
+    :default 200
+    :parse-fn #(Integer/parseInt %)]
+   ["-h" "--height HEIGHT" "Image height"
+    :default 100
+    :parse-fn #(Integer/parseInt %)]
+   ["-s" "--sample SAMPLE" "Samples per pixel"
+    :default 16
+    :parse-fn #(Integer/parseInt %)]
+   ["-n" "--name NAME" "Name of output image"
+    :default "out.ppm"]])
+
 (defn -main
   [& args]
-  (let [n-columns 400
-        n-rows 200
-        n-samples 8
+  (let [options (:options (cli/parse-opts args cli-options))
+        width (:width options)
+        height (:height options)
+        n-samples (:sample options)
         look-from (vec3/vec3 13.0 2.0 3.0)
         look-at vec3/zero
         vup vec3/vup
         dist-to-focus 10.0
         aperture 0.1
-        camera (camera/camera look-from look-at vup 20.0 (/ (float n-columns) n-rows) aperture dist-to-focus)
-        index->position #(vector (- n-rows (quot % n-columns) 1) (rem % n-columns))
-        positions (map index->position (range 0 (* n-columns n-rows)))
+        camera (camera/camera look-from look-at vup 20.0 (/ (float width) height) aperture dist-to-focus)
+        index->position #(vector (- height (quot % width) 1) (rem % width))
+        positions (map index->position (range 0 (* width height)))
         scene (random-scene)
         generate-pixel (fn [pos]
                          (let [row (first pos)
                                column (second pos)
-                               sample #(sample scene camera row column n-rows n-columns)
+                               sample #(sample scene camera row column height width)
                                samples (take n-samples (repeatedly sample))
                                raw-p (vec3/div-scalar (apply vec3/add samples) n-samples)
                                p (map (comp int (partial * 255)) (map math/sqrt raw-p))]
                            (vec3/vec3->pixel p)))
         pixels (map generate-pixel positions)]
-    (util/save-ppm "hello.ppm" n-columns n-rows pixels)))
+    (util/save-ppm (:name options) width height pixels)))
